@@ -1,0 +1,265 @@
+---
+title: "EDA Home credit"
+format: html
+---
+
+
+```{r}
+install.packages("dplyr")
+install.packages("tidyr")
+install.packages("tidyverse")
+install.packages("readr")
+install.packages("ggplot2")
+library(readr)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+```
+```{r}
+data_HCR_train <- read_csv(
+  "/Users/heidihatch/Desktop/Heidi GitHub/Home_Credit_repo/application_train.csv",
+  show_col_types = FALSE
+)
+
+data_HCR_test <- read_csv(
+  "/Users/heidihatch/Desktop/Heidi GitHub/Home_Credit_repo/application_test.csv",
+  show_col_types = FALSE
+)
+
+```
+
+```{r}
+
+target_summary <- data_HCR_train %>%
+  count(TARGET) %>%
+  mutate(
+    proportion = n / sum(n)
+  )
+
+target_summary
+
+```
+
+When looking at these results it is clear that this data is unbalanced severely.
+Although a majority-class classifier achieves an accuracy of approximately 91.9%, this performance is misleading. Such a model would never predict a default and therefore would fail to identify any high-risk borrowers.
+
+In the context of credit risk modeling, the minority class—defaults—is of primary interest because misclassifying a defaulting customer as low risk can result in substantial financial losses. Accuracy treats all classification errors equally and is therefore dominated by the majority class in highly imbalanced datasets.
+
+As a result, accuracy alone is not an appropriate evaluation metric for this problem. More informative metrics that focus on the model’s ability to identify defaults, such as recall, precision, AUC, or cost-sensitive measures, will be necessary in later stages of the project.
+
+```{r}
+eda_df <- data_HCR_train %>%
+  mutate(
+    AGE_YEARS = -DAYS_BIRTH / 365,
+    EMPLOYED_YEARS = ifelse(DAYS_EMPLOYED < 0, -DAYS_EMPLOYED / 365, NA)
+  )
+  ggplot(eda_df, aes(x = EXT_SOURCE_2, fill = factor(TARGET))) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title = "EXT_SOURCE_2 Distribution by Default Status",
+    x = "EXT_SOURCE_2",
+    fill = "TARGET"
+  ) +
+  theme_minimal()
+
+eda_df %>%
+  group_by(TARGET) %>%
+  summarise(
+    mean_ext2 = mean(EXT_SOURCE_2, na.rm = TRUE),
+    median_ext2 = median(EXT_SOURCE_2, na.rm = TRUE),
+    mean_age = mean(AGE_YEARS, na.rm = TRUE),
+    mean_income = mean(AMT_INCOME_TOTAL, na.rm = TRUE)
+  )
+
+```
+
+```{r}
+install.packages("pROC")
+library(pROC)
+
+num_vars <- c(
+  "EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3",
+  "AGE_YEARS", "AMT_INCOME_TOTAL", "AMT_CREDIT"
+)
+
+auc_table <- lapply(num_vars, function(v) {
+  df <- eda_df %>% select(TARGET, all_of(v)) %>% drop_na()
+  roc_obj <- roc(df$TARGET, df[[v]], quiet = TRUE)
+  data.frame(
+    variable = v,
+    auc = as.numeric(auc(roc_obj))
+  )
+}) %>% bind_rows() %>% arrange(desc(auc))
+
+auc_table
+```
+
+Exploratory analysis reveals several predictors with strong relationships to default. External credit scores (EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3) exhibit the strongest separation between defaulters and non-defaulters, indicating high predictive potential. Age and employment duration also show meaningful differences across target classes, with younger and less stably employed applicants more likely to default.
+
+Among categorical variables, education level and asset ownership indicators display notable variation in default rates. These findings suggest that both financial history variables and socio-economic characteristics will be important inputs in subsequent predictive models.
+
+```{r}
+missing_summary <- function(df) {
+  tibble(
+    variable = names(df),
+    missing_pct = sapply(df, function(x) mean(is.na(x)))
+  ) %>%
+    arrange(desc(missing_pct))
+}
+
+missing_train <- missing_summary(data_HCR_train)
+missing_test  <- missing_summary(data_HCR_test)
+
+head(missing_train, 15)
+
+missing_train %>%
+  filter(missing_pct > 0) %>%
+  slice_max(missing_pct, n = 20) %>%
+  ggplot(aes(
+    x = reorder(variable, missing_pct),
+    y = missing_pct
+  )) +
+  geom_col(fill = "firebrick") +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Top 20 Variables by Missingness (Training Data)",
+    x = "Variable",
+    y = "Percent Missing"
+  ) +
+  theme_minimal()
+
+missing_compare <- missing_train %>%
+  rename(train_missing = missing_pct) %>%
+  left_join(
+    missing_test %>% rename(test_missing = missing_pct),
+    by = "variable"
+  )
+
+head(missing_compare)
+
+```
+
+The application datasets contain substantial missing data across many variables. While a large number of features are fully observed, several variables exhibit moderate to high levels of missingness, reflecting differences in data availability across external data sources rather than random data loss.
+
+Removing rows with missing values would result in a significant reduction in sample size and is therefore not appropriate. Instead, a combination of column filtering and imputation is more suitable. Variables with extremely high missingness may be excluded from modeling, while numeric variables can be imputed using median values and categorical variables can be imputed with an explicit “Missing” category.
+
+Additionally, missingness itself may be informative for credit risk assessment. For selected predictors, missingness indicators will be created to allow models to capture this information. This strategy balances information retention with model robustness and will be applied consistently to both training and test datasets.
+
+```{r}
+library(dplyr)
+summary(data_HCR_train)
+summary(data_HCR_train$DAYS_BIRTH)
+data_HCR_train <- data_HCR_train %>%
+  mutate(
+    AGE_YEARS = -DAYS_BIRTH / 365
+  )
+summary(data_HCR_train$DAYS_EMPLOYED)
+
+data_HCR_train <- data_HCR_train %>%
+  mutate(
+    DAYS_EMPLOYED = ifelse(DAYS_EMPLOYED == 365243, NA, DAYS_EMPLOYED),
+    IS_EMPLOYED = ifelse(is.na(DAYS_EMPLOYED), 0, 1)
+  )
+summary(data_HCR_train$AMT_INCOME_TOTAL)
+summary(data_HCR_train$AMT_CREDIT)
+summary(data_HCR_train$AMT_ANNUITY)
+
+table(data_HCR_train$CODE_GENDER)
+
+table(data_HCR_train$FLAG_OWN_CAR)
+table(data_HCR_train$FLAG_OWN_REALTY)
+
+zero_var <- data_HCR_train %>%
+  summarise(across(everything(), ~ n_distinct(.) == 1)) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "zero_var") %>%
+  filter(zero_var)
+
+zero_var
+
+nzv <- data_HCR_train %>%
+  summarise(across(
+    where(is.numeric),
+    ~ sd(., na.rm = TRUE)
+  )) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "sd") %>%
+  arrange(sd)
+
+head(nzv, 10)
+
+
+```
+
+Several data quality issues were identified during exploratory analysis. Some time-based variables use non-intuitive encodings; for example, DAYS_BIRTH is recorded as a negative value representing days prior to application and should be transformed into age in years for interpretability. Additionally, DAYS_EMPLOYED contains a large placeholder value that indicates applicants who are not currently employed. This value does not represent a real duration and should be treated as missing, potentially with an accompanying employment indicator variable.
+
+Monetary variables such as income and credit amount exhibit strong right skew and extreme values. These appear to be legitimate outliers rather than data entry errors and should be retained, though transformations may be beneficial for certain models.
+
+Finally, some variables display zero or near-zero variance, indicating limited or no informational value. Such variables are unlikely to contribute meaningfully to predictive performance and can be removed during preprocessing.
+
+Transformations Needed for Modeling (Initial Thoughts)
+
+The application data will require transformation prior to modeling, although the specific preprocessing steps will depend on the modeling approach. Linear and regularized models require numeric predictors to be on comparable scales, categorical variables to be encoded, and missing values to be imputed. In contrast, tree-based models are more robust to skewed distributions and do not require feature scaling, though they still require consistent handling of missing values and categorical encodings.
+
+Exploratory analysis has already identified several variables that would benefit from transformation for interpretability, such as converting DAYS_BIRTH into age in years and addressing placeholder values in DAYS_EMPLOYED. Monetary variables exhibit strong skew and may benefit from log transformations for certain model types. These considerations will guide preprocessing decisions in later stages of the project.
+```{r}
+data_previous_application <- read_csv(
+  "/Users/heidihatch/Desktop/Heidi GitHub/Home_Credit_repo/previous_application.csv",
+  show_col_types = FALSE
+)
+
+glimpse(data_previous_application)
+
+prev_agg <- data_previous_application %>%
+  group_by(SK_ID_CURR) %>%
+  summarise(
+    prev_app_count = n(),
+    prev_approval_rate = mean(NAME_CONTRACT_STATUS == "Approved", na.rm = TRUE),
+    prev_credit_mean = mean(AMT_CREDIT, na.rm = TRUE),
+    prev_credit_max = max(AMT_CREDIT, na.rm = TRUE),
+    prev_annuity_mean = mean(AMT_ANNUITY, na.rm = TRUE)
+  )
+
+train_joined <- data_HCR_train %>%
+  left_join(prev_agg, by = "SK_ID_CURR")
+
+test_joined <- data_HCR_test %>%
+  left_join(prev_agg, by = "SK_ID_CURR")
+
+nrow(data_HCR_train)
+nrow(train_joined)
+
+mean(is.na(train_joined$prev_app_count))
+
+train_joined %>%
+  group_by(TARGET) %>%
+  summarise(
+    mean_prev_apps = mean(prev_app_count, na.rm = TRUE),
+    mean_approval_rate = mean(prev_approval_rate, na.rm = TRUE),
+    mean_prev_credit = mean(prev_credit_mean, na.rm = TRUE)
+  )
+
+  ggplot(train_joined, aes(x = prev_app_count, fill = factor(TARGET))) +
+  geom_histogram(bins = 30, position = "identity", alpha = 0.5) +
+  labs(
+    title = "Number of Previous Applications by Default Status",
+    x = "Previous Application Count",
+    fill = "TARGET"
+  ) +
+  theme_minimal()
+
+train_joined %>%
+  mutate(prev_app_bin = cut(prev_app_count, breaks = c(0, 1, 3, 5, 10, Inf))) %>%
+  group_by(prev_app_bin) %>%
+  summarise(
+    n = n(),
+    default_rate = mean(TARGET)
+  )
+
+```
+
+Transactional data from previous loan applications was aggregated to the applicant level and joined to the application dataset. This aggregation preserved the one-row-per-applicant structure required for modeling.
+
+Several aggregated features show meaningful relationships with default status. Applicants with a lower historical approval rate and different patterns in the number of previous applications tend to exhibit higher default rates. These findings suggest that historical credit behavior captured in transactional datasets provides additional predictive signal beyond the application-level features alone.
+
+Missing values introduced by the join primarily reflect applicants with no prior credit history, which is itself potentially informative and should be handled carefully during modeling.
