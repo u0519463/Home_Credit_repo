@@ -1,32 +1,24 @@
+
 # Home Credit Default Risk Project
 
-**Business Analytics – Data Preparation, Modeling, and Model Documentation**
+**Business Analytics – Data Preparation & Modeling**
 
 ---
 
 # Project Overview
 
-This project predicts loan default risk using the **Home Credit Default Risk** dataset.
-The repository contains a reproducible workflow for:
+This project predicts loan default risk using the **Home Credit Default Risk** dataset.  
+The objective is to build a clean, reproducible pipeline that prepares raw financial data and trains predictive models capable of identifying borrowers likely to default.
 
-1. preparing raw Home Credit data for modeling,
-2. training and comparing multiple machine-learning models, and
-3. documenting the final model in a stakeholder-facing **model card**.
-
-The work follows the **CRISP-DM framework**:
+The project follows the **CRISP‑DM framework**:
 
 1. Business Understanding
 2. Data Understanding
 3. Data Preparation
 4. Modeling
 5. Evaluation
-6. Deployment Communication
 
-The repository currently includes three main project components:
-
-- `data_preparation.R` – reusable feature engineering and preprocessing pipeline
-- `home_credit_modeling.Rmd` – modeling notebook used to compare models and train the final model
-- `model_card.Rmd` – model documentation notebook written for a business stakeholder audience
+The repository contains both the **data preparation pipeline** and the **modeling notebook** used to evaluate multiple machine‑learning approaches and generate predictions.
 
 ---
 
@@ -36,49 +28,123 @@ File: `data_preparation.R`
 
 ## Purpose
 
-The `data_preparation.R` script builds a modeling-ready dataset from raw Home Credit data using reusable functions. It is designed to ensure that:
+The `data_preparation.R` script builds a modeling‑ready dataset from raw Home Credit data using **reusable functions**. It ensures that:
 
-- transformations are applied consistently to training and test data,
-- no information from the test set leaks into training, and
-- train and test datasets contain aligned feature columns except for `TARGET`.
+- Transformations are consistent between training and test data
+- No information from the test set leaks into training
+- Train and test datasets contain identical feature columns (except `TARGET`)
 
-## What the Data Preparation Script Does
+---
 
-### 1. Cleans Application Data
+# What the Data Preparation Script Does
+
+## 1. Cleans Application Data
+
+### Fixes Data Issues Identified in EDA
 
 - Replaces `DAYS_EMPLOYED == 365243` placeholder values with `NA`
-- Creates an anomaly indicator for employment days
-- Converts day-based features into more interpretable age and employment measures
+- Creates anomaly indicator: `DAYS_EMPLOYED_ANOM`
+- Converts negative day-based features to positive years:
 
-### 2. Handles Missing Values
+  - `AGE_YEARS`
+  - `EMP_YEARS`
 
-- Imputes `EXT_SOURCE_1`, `EXT_SOURCE_2`, and `EXT_SOURCE_3` using training-only statistics
-- Adds missingness indicators for high-value fields such as external scores and occupation-related variables
+---
 
-### 3. Engineers Financial Ratios
+## 2. Handles Missing Values
 
-The preparation pipeline creates credit-risk features such as:
+### EXT_SOURCE Variables
+
+- Imputes `EXT_SOURCE_1`, `EXT_SOURCE_2`, `EXT_SOURCE_3` using **training-only medians**
+- Adds missing indicators:
+
+  - `EXT1_MISS`
+  - `EXT2_MISS`
+  - `EXT3_MISS`
+
+### Additional Missing Indicators
+
+- `OCCUPATION_MISS`
+- `OWN_CAR_AGE_MISS`
+- Indicators for missing credit history
+
+---
+
+## 3. Engineers Financial Ratios
+
+The pipeline creates several common credit‑risk ratios:
 
 - `CREDIT_TO_INCOME`
 - `ANNUITY_TO_INCOME`
-- `PAYMENT_RATE`
-- `CREDIT_TERM`
-- `LTV_PROXY`
+- `PAYMENT_RATE` (annuity / credit)
+- `CREDIT_TERM` (credit / annuity proxy)
+- `LTV_PROXY` (credit / goods price)
 - `INCOME_PER_PERSON`
 - `ANNUITY_PER_PERSON`
 - `CHILDREN_RATIO`
 
-### 4. Aggregates Supplementary Tables
+Log‑transformed monetary features:
 
-Supplementary Home Credit tables are aggregated to the applicant level (`SK_ID_CURR`) so they can be joined to the main application data. These include engineered summaries from:
+- `LOG_INCOME`
+- `LOG_CREDIT`
+- `LOG_ANNUITY`
+- `LOG_GOODS`
 
-- `bureau.csv`
-- `previous_application.csv`
-- `installments_payments.csv`
+---
 
-### 5. Ensures Train/Test Consistency
+## 4. Feature Engineering
 
-The script learns preprocessing parameters from the training data, stores them in a reusable object, and applies identical transformations to the test data.
+Additional engineered features include:
+
+- EXT source average/min/max
+- Interaction term: `AGE_YEARS * EXT_AVG`
+- Age and income binning (learned from training data only)
+- Rare category collapsing for high‑cardinality categorical variables
+
+---
+
+## 5. Aggregates Supplementary Tables
+
+All supplementary tables are aggregated to the applicant level (`SK_ID_CURR`).
+
+### bureau.csv
+
+- Count of previous credits
+- Active vs closed credit ratios
+- Overdue totals
+- Debt ratios
+
+### previous_application.csv
+
+- Previous application counts
+- Approval rate
+- Refusal count
+- Average credit amounts
+
+### installments_payments.csv
+
+- Installment count
+- Late payment percentage
+- Average days late
+- Payment ratio statistics
+
+---
+
+## 6. Ensures Train/Test Consistency
+
+The pipeline:
+
+- Learns medians, bins, and categorical levels from **training data only**
+- Stores parameters in a reusable `params` object
+- Applies identical transformations to test data
+- Creates identical feature columns for both datasets
+- Ensures `TARGET` appears only in the training output
+
+Safety checks confirm:
+
+- identical feature columns
+- no leakage
+- correct dataset structure
 
 ---
 
@@ -88,124 +154,106 @@ File: `home_credit_modeling.Rmd`
 
 ## Purpose
 
-The modeling notebook trains and evaluates several machine-learning models to estimate the probability that a borrower will default.
+The modeling notebook trains and evaluates several machine‑learning models to estimate the probability that a borrower will default.
 
-Because the target is highly imbalanced, model performance is evaluated primarily using **Area Under the ROC Curve (AUC)** rather than raw accuracy.
+Because only about **8% of borrowers default**, model performance is evaluated primarily using **Area Under the ROC Curve (AUC)** rather than raw accuracy.
 
-## Modeling Workflow
+---
+
+# Modeling Workflow
 
 The notebook performs the following steps:
 
 1. Establish a baseline benchmark
 2. Compare multiple model families
-3. Test class-imbalance strategies
-4. Tune hyperparameters for the best-performing model
-5. Train a final model and generate a Kaggle submission
-
-## Models Compared
-
-Three modeling approaches are compared in the notebook:
-
-- **Logistic Regression** – baseline interpretable model
-- **Random Forest** – nonlinear tree-based comparison model trained on a sampled subset for runtime efficiency
-- **XGBoost** – gradient boosted trees and the strongest-performing final model
-
-## Final Model
-
-The final model documented in this repository is a tuned **XGBoost binary classifier** trained on the engineered feature matrix created from the Home Credit application data and supplementary aggregated tables.
-
-The modeling notebook also records a **Kaggle public AUC of 0.76421** for the final submission.
-
-Predicted probabilities for the Kaggle test set are exported to:
-
-```text
-home_credit_submission.csv
-```
+3. Test class‑imbalance strategies
+4. Tune hyperparameters for the best‑performing model
+5. Train a final model and generate predictions
 
 ---
 
-# Model Card Notebook
+# Models Compared
 
-File: `model_card.Rmd`
+Three modeling approaches were evaluated.
 
-## Purpose
+### Logistic Regression
 
-The model card notebook summarizes the final Home Credit default-risk model for a **business stakeholder deciding whether and how to use the model**. It is written as documentation rather than as a coding exercise and is intended to be compiled to HTML with code hidden and outputs displayed.
+A logistic regression model provides a simple and interpretable baseline.
 
-## What the Model Card Covers
+### Random Forest
 
-The model card notebook includes the following sections:
+A random forest model was trained on a **sampled subset of the dataset** to reduce runtime while still providing a meaningful comparison.
 
-- **Model Details** – model type, version, training data summary, and final hyperparameters
-- **Intended Use** – what the model is designed to support and what it should not be used for
-- **Performance Metrics** – internal holdout AUC, tuning-stage AUC when available, and the recorded Kaggle public AUC
-- **Decision Threshold Analysis** – recommended operating threshold selected from Home Credit holdout-sample performance
-- **Explainability (SHAP)** – SHAP-based feature importance using a 1,000-row sample for speed
-- **Adverse Action Mapping** – translation of technical feature names into human-readable denial-reason language
-- **Fairness Analysis** – approval-rate comparisons by `CODE_GENDER` and `NAME_EDUCATION_TYPE`
-- **Limitations and Risks** – known constraints of the data and model
-- **Executive Summary / Business Recommendation** – deployment-oriented summary for a senior stakeholder
+### XGBoost
 
-## Important Constraint
+Gradient boosted trees using **XGBoost** provided the best predictive performance.  
+Hyperparameters were tuned using cross‑validation on a **5,000‑row subsample** for efficiency.
 
-The current `model_card.Rmd` is written to use only the **Home Credit Kaggle project data** and the real model objects created in the modeling workflow. It does **not** introduce outside lender-profit assumptions or unsupported dollar-impact estimates.
+---
 
-The file expects the following objects from the modeling workflow to be available in the R session or loaded from an artifact file:
+# Model Results
 
-- `final_model`
-- `best_xgb`
-- `x_full`
-- `y`
-- `train_full_processed`
-- `final_params`
+Model performance was evaluated using cross‑validated AUC.
+
+| Model | AUC |
+|------|------|
+| XGBoost | ~0.776 |
+| Logistic Regression | ~0.725 |
+| Random Forest | ~0.723 |
+
+The XGBoost model substantially outperformed the baseline models, demonstrating the effectiveness of nonlinear tree‑based methods and engineered credit‑history features.
+
+---
+
+# Final Model
+
+The final model is a tuned **XGBoost classifier** trained on the full feature matrix.
+
+Predicted probabilities for the test dataset are exported to:
+
+```
+home_credit_submission.csv
+```
+
+The submission file contains:
+
+- `SK_ID_CURR`
+- predicted `TARGET` probability
 
 ---
 
 # How to Run the Project
 
-## 1. Run the data preparation pipeline
+1. Run the data preparation pipeline:
 
-```r
+```
 source("data_preparation.R")
 ```
 
-## 2. Run the modeling notebook
+2. Open and run the modeling notebook:
 
-Open and run:
-
-```text
+```
 home_credit_modeling.Rmd
 ```
 
-This notebook creates the final model, compares candidate models, and generates the Kaggle submission file.
+3. The notebook will:
 
-## 3. Run or load the modeling objects for the model card
-
-Before knitting `model_card.Rmd`, either:
-
-- run the modeling notebook in the same R session, or
-- save and load an `.RData` artifact containing the required modeling objects.
-
-## 4. Knit the model card
-
-Compile:
-
-```text
-model_card.Rmd
-```
-
-to HTML so the final deliverable shows narrative text, tables, and figures with code hidden.
+- train multiple models
+- compare performance
+- tune XGBoost
+- generate predictions
+- export `home_credit_submission.csv`
 
 ---
 
-# Repository Summary
+# Summary
 
-This repository documents a full Home Credit credit-risk workflow, including:
+This project demonstrates a complete **credit‑risk modeling pipeline**, including:
 
-- reproducible data preparation,
-- feature engineering from main and supplementary tables,
-- model comparison across multiple algorithms,
-- final XGBoost training and Kaggle scoring, and
-- a stakeholder-facing model card for threshold selection, explainability, fairness review, and model limitations.
+- reproducible data preparation
+- feature engineering
+- model comparison
+- hyperparameter tuning
+- production‑ready prediction output
 
-The final documented model is a tuned XGBoost classifier with a recorded **Kaggle public AUC of 0.76421**.
+The final tuned XGBoost model achieves strong predictive performance while maintaining a clean, reproducible workflow consistent with the CRISP‑DM methodology.
