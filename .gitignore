@@ -1,0 +1,7 @@
+*.html
+.Rhistory
+.RData
+.Rproj.user/
+artifacts/
+data/
+*.csv
