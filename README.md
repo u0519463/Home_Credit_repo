@@ -1,259 +1,123 @@
+# Home Credit Default Risk Portfolio
 
-# Home Credit Default Risk Project
-
-**Business Analytics – Data Preparation & Modeling**
-
----
-
-# Project Overview
-
-This project predicts loan default risk using the **Home Credit Default Risk** dataset.  
-The objective is to build a clean, reproducible pipeline that prepares raw financial data and trains predictive models capable of identifying borrowers likely to default.
-
-The project follows the **CRISP‑DM framework**:
-
-1. Business Understanding
-2. Data Understanding
-3. Data Preparation
-4. Modeling
-5. Evaluation
-
-The repository contains both the **data preparation pipeline** and the **modeling notebook** used to evaluate multiple machine‑learning approaches and generate predictions.
+**Heidi Hatch**  
+Individual analytics portfolio project for the **Home Credit Default Risk** Kaggle competition
 
 ---
 
-# Data Preparation Script
+## Project Summary
 
-File: `data_preparation.R`
+This repository documents my individual work on the Home Credit Default Risk project. The goal of the project is to predict which loan applicants are at higher risk of default so that a lender can make more informed underwriting decisions.
 
-## Purpose
+This portfolio is organized as a reproducible analytics workflow rather than a single notebook. It shows how I moved from data preparation to model development and then to model documentation for stakeholder communication. The work emphasizes both predictive performance and clear explanation of results.
 
-The `data_preparation.R` script builds a modeling‑ready dataset from raw Home Credit data using **reusable functions**. It ensures that:
-
-- Transformations are consistent between training and test data
-- No information from the test set leaks into training
-- Train and test datasets contain identical feature columns (except `TARGET`)
+From a business perspective, the value of this project is in helping a lender better identify credit risk before issuing a loan. A stronger risk model can support more consistent lending decisions, reduce avoidable defaults, and improve how credit decisions are communicated to non-technical stakeholders.
 
 ---
 
-# What the Data Preparation Script Does
+## Portfolio Contents
 
-## 1. Cleans Application Data
+This repository includes my individual notebooks and scripts created while working on the Home Credit project.
 
-### Fixes Data Issues Identified in EDA
+### `data_preparation.R`
+Reusable data-preparation pipeline for the Home Credit dataset. This script:
+- cleans and standardizes raw application data
+- handles missing values using training-only logic
+- engineers credit-risk features and ratios
+- aggregates supplementary tables to the applicant level
+- ensures train/test consistency for modeling
 
-- Replaces `DAYS_EMPLOYED == 365243` placeholder values with `NA`
-- Creates anomaly indicator: `DAYS_EMPLOYED_ANOM`
-- Converts negative day-based features to positive years:
+### `home_credit_modeling.Rmd`
+Modeling notebook used to train and compare machine learning models for default prediction. This notebook:
+- establishes a baseline
+- compares multiple model families
+- evaluates class imbalance strategies
+- tunes the strongest model
+- produces a final Kaggle submission file
 
-  - `AGE_YEARS`
-  - `EMP_YEARS`
-
----
-
-## 2. Handles Missing Values
-
-### EXT_SOURCE Variables
-
-- Imputes `EXT_SOURCE_1`, `EXT_SOURCE_2`, `EXT_SOURCE_3` using **training-only medians**
-- Adds missing indicators:
-
-  - `EXT1_MISS`
-  - `EXT2_MISS`
-  - `EXT3_MISS`
-
-### Additional Missing Indicators
-
-- `OCCUPATION_MISS`
-- `OWN_CAR_AGE_MISS`
-- Indicators for missing credit history
+### `model_card.Rmd`
+Model documentation notebook for the final model. This notebook summarizes:
+- model details and intended use
+- performance metrics and operating threshold analysis
+- SHAP-based explainability
+- adverse action reason mapping
+- fairness checks across selected demographic groups
+- limitations, risks, and deployment considerations
 
 ---
 
-## 3. Engineers Financial Ratios
+## Problem Framing
 
-The pipeline creates several common credit‑risk ratios:
+Home Credit serves applicants who may have limited traditional credit history. In this setting, default prediction is a high-value analytics problem because poor credit decisions are expensive, while overly conservative decisions may reject applicants who would repay successfully.
 
-- `CREDIT_TO_INCOME`
-- `ANNUITY_TO_INCOME`
-- `PAYMENT_RATE` (annuity / credit)
-- `CREDIT_TERM` (credit / annuity proxy)
-- `LTV_PROXY` (credit / goods price)
-- `INCOME_PER_PERSON`
-- `ANNUITY_PER_PERSON`
-- `CHILDREN_RATIO`
-
-Log‑transformed monetary features:
-
-- `LOG_INCOME`
-- `LOG_CREDIT`
-- `LOG_ANNUITY`
-- `LOG_GOODS`
+The project therefore focuses on building a model that ranks risk effectively and can be explained clearly enough to support real decision-making.
 
 ---
 
-## 4. Feature Engineering
+## Data and Method
 
-Additional engineered features include:
+The work uses the **Home Credit Default Risk** Kaggle dataset, including the main application files and supplementary relational tables.
 
-- EXT source average/min/max
-- Interaction term: `AGE_YEARS * EXT_AVG`
-- Age and income binning (learned from training data only)
-- Rare category collapsing for high‑cardinality categorical variables
+My workflow follows a practical CRISP-DM structure:
 
----
-
-## 5. Aggregates Supplementary Tables
-
-All supplementary tables are aggregated to the applicant level (`SK_ID_CURR`).
-
-### bureau.csv
-
-- Count of previous credits
-- Active vs closed credit ratios
-- Overdue totals
-- Debt ratios
-
-### previous_application.csv
-
-- Previous application counts
-- Approval rate
-- Refusal count
-- Average credit amounts
-
-### installments_payments.csv
-
-- Installment count
-- Late payment percentage
-- Average days late
-- Payment ratio statistics
+1. **Business Understanding** – frame the lending problem and define the modeling objective  
+2. **Data Understanding** – examine the target, missingness, anomalies, and predictive signal  
+3. **Data Preparation** – clean data, engineer features, and aggregate external tables  
+4. **Modeling** – compare candidate models and tune the best approach  
+5. **Evaluation** – assess predictive performance and document the final model
 
 ---
 
-## 6. Ensures Train/Test Consistency
+## Modeling Results
 
-The pipeline:
+The modeling work compared logistic regression, random forest, and XGBoost.
 
-- Learns medians, bins, and categorical levels from **training data only**
-- Stores parameters in a reusable `params` object
-- Applies identical transformations to test data
-- Creates identical feature columns for both datasets
-- Ensures `TARGET` appears only in the training output
+Based on the modeling notebook, the tuned **XGBoost** model performed best.
 
-Safety checks confirm:
+### Cross-validated model comparison
+- **XGBoost:** approximately **0.776 AUC**
+- **Logistic Regression:** approximately **0.725 AUC**
+- **Random Forest:** approximately **0.723 AUC**
 
-- identical feature columns
-- no leakage
-- correct dataset structure
+### Kaggle performance
+- **Public leaderboard AUC:** **0.76421**
 
----
-
-# Modeling Notebook
-
-File: `home_credit_modeling.Rmd`
-
-## Purpose
-
-The modeling notebook trains and evaluates several machine‑learning models to estimate the probability that a borrower will default.
-
-Because only about **8% of borrowers default**, model performance is evaluated primarily using **Area Under the ROC Curve (AUC)** rather than raw accuracy.
+These results suggest that nonlinear tree-based methods combined with engineered credit-risk features were more effective than the baseline alternatives for this dataset.
 
 ---
 
-# Modeling Workflow
+## Business Value
 
-The notebook performs the following steps:
+This project demonstrates how machine learning can be used to support lending decisions in a structured and reproducible way.
 
-1. Establish a baseline benchmark
-2. Compare multiple model families
-3. Test class‑imbalance strategies
-4. Tune hyperparameters for the best‑performing model
-5. Train a final model and generate predictions
-
----
-
-# Models Compared
-
-Three modeling approaches were evaluated.
-
-### Logistic Regression
-
-A logistic regression model provides a simple and interpretable baseline.
-
-### Random Forest
-
-A random forest model was trained on a **sampled subset of the dataset** to reduce runtime while still providing a meaningful comparison.
-
-### XGBoost
-
-Gradient boosted trees using **XGBoost** provided the best predictive performance.  
-Hyperparameters were tuned using cross‑validation on a **5,000‑row subsample** for efficiency.
+The main business contributions of this work are:
+- improving identification of higher-risk applicants
+- building a reusable preparation pipeline instead of one-off analysis
+- documenting model behavior so results are easier to explain
+- connecting model outputs to stakeholder-facing documentation through a model card
 
 ---
 
-# Model Results
+## What I Would Discuss in an Interview
 
-Model performance was evaluated using cross‑validated AUC.
+This portfolio is intended to show both technical skill and communication ability. Key talking points include:
 
-| Model | AUC |
-|------|------|
-| XGBoost | ~0.776 |
-| Logistic Regression | ~0.725 |
-| Random Forest | ~0.723 |
-
-The XGBoost model substantially outperformed the baseline models, demonstrating the effectiveness of nonlinear tree‑based methods and engineered credit‑history features.
-
----
-
-# Final Model
-
-The final model is a tuned **XGBoost classifier** trained on the full feature matrix.
-
-Predicted probabilities for the test dataset are exported to:
-
-```
-home_credit_submission.csv
-```
-
-The submission file contains:
-
-- `SK_ID_CURR`
-- predicted `TARGET` probability
+- how I translated exploratory findings into reusable data-preparation code
+- how I prevented train/test leakage during feature engineering
+- why AUC was the primary metric given class imbalance
+- why XGBoost outperformed the simpler baseline models
+- how SHAP can be used to explain model behavior
+- how model documentation helps bridge technical modeling and business deployment
+- what limitations remain when working with a competition dataset rather than live production data
 
 ---
 
-# How to Run the Project
+## Reproducibility Notes
 
-1. Run the data preparation pipeline:
+This repo is organized around source notebooks and scripts rather than rendered HTML because GitHub does not render HTML notebooks well for portfolio review. The main portfolio artifacts are the `.Rmd` and `.R` files that document my individual work.
 
-```
-source("data_preparation.R")
-```
-
-2. Open and run the modeling notebook:
-
-```
-home_credit_modeling.Rmd
-```
-
-3. The notebook will:
-
-- train multiple models
-- compare performance
-- tune XGBoost
-- generate predictions
-- export `home_credit_submission.csv`
+Model artifacts and output files should be kept locally and excluded from version control when appropriate. The notebooks and scripts in this repo are intended to show the full analytic workflow in a reproducible, portfolio-ready format.
 
 ---
 
-# Summary
 
-This project demonstrates a complete **credit‑risk modeling pipeline**, including:
-
-- reproducible data preparation
-- feature engineering
-- model comparison
-- hyperparameter tuning
-- production‑ready prediction output
-
-The final tuned XGBoost model achieves strong predictive performance while maintaining a clean, reproducible workflow consistent with the CRISP‑DM methodology.
